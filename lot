@@ -1,0 +1,1311 @@
+if _G.aa then
+	pcall(function()
+		if _G.aa.cons then
+			for _, c in ipairs(_G.aa.cons) do pcall(function() c:Disconnect() end) end
+		end
+		if _G.aa.minechild then pcall(function() _G.aa.minechild:Disconnect() end) end
+		if _G.aa.minedesc then pcall(function() _G.aa.minedesc:Disconnect() end) end
+		if _G.aa.sentrychild then pcall(function() _G.aa.sentrychild:Disconnect() end) end
+		if _G.aa.sentrydesc then pcall(function() _G.aa.sentrydesc:Disconnect() end) end
+		if _G.aa.lootchild then pcall(function() _G.aa.lootchild:Disconnect() end) end
+		if _G.aa.lootdesc then pcall(function() _G.aa.lootdesc:Disconnect() end) end
+		if _G.aa.screen then pcall(function() _G.aa.screen:Destroy() end) end
+		if _G.aa.toasts then pcall(function() _G.aa.toasts:Destroy() end) end
+		if _G.aa.bodytags then
+			for _, h in pairs(_G.aa.bodytags) do pcall(function() h:Destroy() end) end
+		end
+		if _G.aa.minetags then
+			for _, h in pairs(_G.aa.minetags) do pcall(function() h:Destroy() end) end
+		end
+		if _G.aa.sentrytags then
+			for _, h in pairs(_G.aa.sentrytags) do pcall(function() h:Destroy() end) end
+		end
+		if _G.aa.loottags then
+			for _, h in pairs(_G.aa.loottags) do pcall(function() h:Destroy() end) end
+		end
+	end)
+	_G.aa = nil
+end
+wait(0.2)
+
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local player = Players.LocalPlayer
+local camera = workspace.CurrentCamera
+
+local settings = {
+	togglekey = Enum.KeyCode.K,
+	fov = 180,
+	silentpart = "Head",
+	shootindex = 11,
+	hitindex = 24,
+	mineindex = 16,
+	sentryindex = 16,
+	npccolor = Color3.fromRGB(255, 50, 50),
+	playercolor = Color3.fromRGB(70, 170, 255),
+	minecolor = Color3.fromRGB(255, 105, 180),
+	sentrycolor = Color3.fromRGB(255, 240, 150),
+	lootcolor = Color3.fromRGB(150, 100, 210),
+	fovcolor = Color3.fromRGB(255, 50, 50),
+	showfov = true,
+	notifytime = 6,
+	maxtargets = 12,
+	tooltries = 3,
+	toolwait = 0.05,
+	holddelay = 0.3,
+	holdinterval = 0.05,
+	playerhitinterval = 1,
+	playermaxrange = 300,
+	minename = "rayHitbox",
+	sentryname = "rayHitbox",
+	lootname = "Base",
+	wallbangthickness = 1,
+	closerange = 30,
+	ignorefriends = true,
+	minerescan = 5,
+	sentryrescan = 5,
+}
+
+local susparts = {
+	"Head",
+	"UpperTorso", "LowerTorso", "Torso",
+	"LeftUpperArm", "LeftLowerArm", "LeftHand",
+	"RightUpperArm", "RightLowerArm", "RightHand",
+	"LeftUpperLeg", "LeftLowerLeg", "LeftFoot",
+	"RightUpperLeg", "RightLowerLeg", "RightFoot",
+	"Left Arm", "Right Arm",
+	"Left Leg", "Right Leg",
+}
+
+local main = {
+	on = true,
+	switching = false,
+	victims = {},
+	fovcircle = nil,
+	shootevt = nil,
+	hitevt = nil,
+	mineevt = nil,
+	sentryevt = nil,
+	cons = {},
+	minechild = nil,
+	minedesc = nil,
+	sentrychild = nil,
+	sentrydesc = nil,
+	lootchild = nil,
+	lootdesc = nil,
+	bodytags = {},
+	minetags = {},
+	sentrytags = {},
+	loottags = {},
+	minecache = {},
+	mineseen = {},
+	minedone = {},
+	sentrycache = {},
+	sentryseen = {},
+	sentrydone = {},
+	lootcache = {},
+	lootseen = {},
+	screen = nil,
+	toasts = nil,
+	pressing = false,
+	holding = false,
+	friendlist = {},
+	lastplayerping = 0,
+	minebox = nil,
+	sentrybox = nil,
+	lootbox = nil,
+	lastsignature = "",
+}
+
+local toast = function() end
+
+do
+	pcall(function()
+		local gui = player:WaitForChild("PlayerGui", 10)
+		if not gui then return end
+
+		local toasts = Instance.new("ScreenGui")
+		toasts.Name = "SA_Notify_" .. math.random(100000, 999999)
+		toasts.ResetOnSpawn = false
+		toasts.IgnoreGuiInset = true
+		toasts.Parent = gui
+		main.toasts = toasts
+
+		local box = Instance.new("Frame")
+		box.BackgroundTransparency = 1
+		box.AnchorPoint = Vector2.new(0, 1)
+		box.Position = UDim2.new(0, 12, 1, -12)
+		box.Size = UDim2.new(0, 420, 0, 240)
+		box.Parent = toasts
+
+		local layout = Instance.new("UIListLayout")
+		layout.SortOrder = Enum.SortOrder.LayoutOrder
+		layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+		layout.Padding = UDim.new(0, 2)
+		layout.Parent = box
+
+		toast = function(text, color)
+			local label = Instance.new("TextLabel")
+			label.BackgroundTransparency = 1
+			label.Text = text
+			label.TextColor3 = color or Color3.fromRGB(255, 255, 255)
+			label.TextStrokeTransparency = 0.5
+			label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+			label.TextSize = 12
+			label.Font = Enum.Font.GothamSemibold
+			label.TextXAlignment = Enum.TextXAlignment.Left
+			label.Size = UDim2.new(1, 0, 0, 14)
+			label.TextTransparency = 1
+			label.Parent = box
+			label.LayoutOrder = -tick()
+
+			local fadein = TweenService:Create(label, TweenInfo.new(0.15), {TextTransparency = 0})
+			local fadeout = TweenService:Create(label, TweenInfo.new(0.3), {TextTransparency = 1})
+			fadein:Play()
+			task.delay(settings.notifytime, function()
+				fadeout:Play()
+				fadeout.Completed:Wait()
+				if label and label.Parent then label:Destroy() end
+			end)
+		end
+	end)
+end
+
+do
+	pcall(function()
+		local gui = player:WaitForChild("PlayerGui", 10)
+		if not gui then return end
+
+		local screen = Instance.new("ScreenGui")
+		screen.Name = "SA_Visual_" .. math.random(100000, 999999)
+		screen.ResetOnSpawn = false
+		screen.IgnoreGuiInset = true
+		screen.Parent = gui
+		main.screen = screen
+
+		local circle = Instance.new("Frame")
+		circle.BackgroundTransparency = 1
+		circle.AnchorPoint = Vector2.new(0.5, 0.5)
+		circle.Size = UDim2.fromOffset(settings.fov * 2, settings.fov * 2)
+		circle.Visible = settings.showfov
+		circle.Parent = screen
+		main.fovcircle = circle
+
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(1, 0)
+		corner.Parent = circle
+
+		local stroke = Instance.new("UIStroke")
+		stroke.Color = settings.fovcolor
+		stroke.Thickness = 1.5
+		stroke.Transparency = 0.3
+		stroke.Parent = circle
+	end)
+end
+
+do
+	pcall(function()
+		local comm = ReplicatedStorage:FindFirstChild("Communication")
+		if not comm then return end
+
+		local events = comm:FindFirstChild("Events")
+		if events then
+			local kids = events:GetChildren()
+			if #kids >= settings.shootindex then
+				main.shootevt = kids[settings.shootindex]
+			end
+		end
+
+		local funcs = comm:FindFirstChild("Functions")
+		if funcs then
+			local kids = funcs:GetChildren()
+			if #kids >= settings.hitindex then
+				main.hitevt = kids[settings.hitindex]
+			end
+			if #kids >= settings.mineindex then
+				main.mineevt = kids[settings.mineindex]
+			end
+			if #kids >= settings.sentryindex then
+				main.sentryevt = kids[settings.sentryindex]
+			end
+		end
+	end)
+end
+
+if main.shootevt then
+	toast("Shoot Y", Color3.fromRGB(100, 255, 100))
+else
+	toast("Shoot N", Color3.fromRGB(255, 120, 120))
+end
+
+if main.hitevt then
+	toast("Hit Y", Color3.fromRGB(100, 255, 100))
+else
+	toast("Hit N", Color3.fromRGB(255, 120, 120))
+end
+
+if main.mineevt then
+	toast("MineHit Y", Color3.fromRGB(100, 255, 100))
+else
+	toast("MineHit N", Color3.fromRGB(255, 120, 120))
+end
+
+do
+	pcall(function()
+		local displayName = player.DisplayName
+		local event = ReplicatedStorage:FindFirstChild("BaseChatComponents")
+		if event then
+			event = event:FindFirstChild("event")
+		end
+		if event and firesignal then
+			firesignal(event.OnClientEvent,
+				"message",
+				{
+					message = "<b><font color=\"rgb(111, 125, 155)\">Yo " .. displayName .. "?</font></b> you r not skid right? <b><font color=\"#ffffff\">enjoy.</font></b>\n\n-Updates: \n Esp Mines\n Esp Sentry\n Esp Loot\n Fixed Bugs",
+					displayname = "Supra Hub",
+					displaynameColor = Color3.new(0.58431373834609985, 0.58431373834609985, 0.1),
+				}
+			)
+		end
+	end)
+end
+
+local function getfriends()
+	main.friendlist = {}
+	pcall(function()
+		local ok, list = pcall(function()
+			return Players:GetFriendsAsync(player.UserId)
+		end)
+		if ok and list then
+			while true do
+				local okpage, page = pcall(function() return list:GetCurrentPage() end)
+				if not okpage or not page then break end
+				for _, entry in ipairs(page) do
+					main.friendlist[entry.Id] = true
+				end
+				if list.IsFinished then break end
+				local okadv = pcall(function() list:AdvanceToNextPageAsync() end)
+				if not okadv then break end
+			end
+		end
+	end)
+end
+
+local function checkfriend(p)
+	if not settings.ignorefriends then return false end
+	if not p then return false end
+	if p == player then return false end
+	if p:IsFriendsWith(player.UserId) then
+		return true
+	end
+	if main.friendlist[p.UserId] then
+		return true
+	end
+	return false
+end
+
+local function keepmine(mine)
+	if not mine or not mine:IsA("BasePart") then return end
+	if main.mineseen[mine] then return end
+	main.mineseen[mine] = true
+	table.insert(main.minecache, mine)
+end
+
+local function digmines(parent)
+	if not parent then return end
+	for _, d in ipairs(parent:GetDescendants()) do
+		if d.Name == settings.minename and d:IsA("BasePart") then
+			keepmine(d)
+		end
+	end
+end
+
+local function watchfield(field)
+	if not field then return end
+	if main.minedesc then
+		pcall(function() main.minedesc:Disconnect() end)
+		main.minedesc = nil
+	end
+	if main.minechild then
+		pcall(function() main.minechild:Disconnect() end)
+		main.minechild = nil
+	end
+
+	digmines(field)
+
+	main.minedesc = field.DescendantAdded:Connect(function(d)
+		if d.Name == settings.minename and d:IsA("BasePart") then
+			keepmine(d)
+		end
+	end)
+
+	main.minechild = field.ChildAdded:Connect(function()
+		task.wait(0.1)
+		digmines(field)
+	end)
+end
+
+local function findmines()
+	main.minecache = {}
+	main.mineseen = {}
+
+	local found = false
+	pcall(function()
+		local buildings = workspace:FindFirstChild("Buildings")
+		if buildings then
+			local eventobjects = buildings:FindFirstChild("EventObjects")
+			if eventobjects then
+				local field = eventobjects:FindFirstChild("Minefields")
+				if field then
+					main.minebox = field
+					watchfield(field)
+					found = true
+				end
+			end
+		end
+	end)
+
+	if not found then
+		pcall(function()
+			for _, d in ipairs(workspace:GetDescendants()) do
+				if d.Name == settings.minename and d:IsA("BasePart") then
+					keepmine(d)
+				end
+			end
+		end)
+	end
+
+	if #main.minecache > 0 then
+		toast("Mine Y", Color3.fromRGB(255, 220, 100))
+	else
+		toast("Mine N", Color3.fromRGB(255, 120, 120))
+	end
+end
+
+local function recheckmines()
+	task.spawn(function()
+		while main.on and _G.aa == main do
+			task.wait(settings.minerescan)
+			pcall(function()
+				if main.minebox and main.minebox.Parent then
+					digmines(main.minebox)
+				else
+					local buildings = workspace:FindFirstChild("Buildings")
+					if buildings then
+						local eventobjects = buildings:FindFirstChild("EventObjects")
+						if eventobjects then
+							local field = eventobjects:FindFirstChild("Minefields")
+							if field then
+								main.minebox = field
+								watchfield(field)
+							end
+						end
+					end
+				end
+			end)
+		end
+	end)
+end
+
+local function keepsentry(s)
+	if not s or not s:IsA("BasePart") then return end
+	if main.sentryseen[s] then return end
+	main.sentryseen[s] = true
+	table.insert(main.sentrycache, s)
+end
+
+local function digsentries(parent)
+	if not parent then return end
+	for _, d in ipairs(parent:GetDescendants()) do
+		if d.Name == settings.sentryname and d:IsA("BasePart") then
+			keepsentry(d)
+		end
+	end
+end
+
+local function watchsentries(field)
+	if not field then return end
+	if main.sentrydesc then
+		pcall(function() main.sentrydesc:Disconnect() end)
+		main.sentrydesc = nil
+	end
+	if main.sentrychild then
+		pcall(function() main.sentrychild:Disconnect() end)
+		main.sentrychild = nil
+	end
+
+	digsentries(field)
+
+	main.sentrydesc = field.DescendantAdded:Connect(function(d)
+		if d.Name == settings.sentryname and d:IsA("BasePart") then
+			keepsentry(d)
+		end
+	end)
+
+	main.sentrychild = field.ChildAdded:Connect(function()
+		task.wait(0.1)
+		digsentries(field)
+	end)
+end
+
+local function findsentries()
+	main.sentrycache = {}
+	main.sentryseen = {}
+
+	local found = false
+	pcall(function()
+		local buildings = workspace:FindFirstChild("Buildings")
+		if buildings then
+			local eventobjects = buildings:FindFirstChild("EventObjects")
+			if eventobjects then
+				local field = eventobjects:FindFirstChild("Sentries")
+				if field then
+					main.sentrybox = field
+					watchsentries(field)
+					found = true
+				end
+			end
+		end
+	end)
+
+	if not found then
+		pcall(function()
+			local buildings = workspace:FindFirstChild("Buildings")
+			if buildings then
+				for _, d in ipairs(buildings:GetDescendants()) do
+					if d.Name == settings.sentryname and d:IsA("BasePart") and d:FindFirstAncestor("Sentries") then
+						keepsentry(d)
+					end
+				end
+			end
+		end)
+	end
+
+	if #main.sentrycache > 0 then
+		toast("Sentry Y", Color3.fromRGB(255, 240, 150))
+	else
+		toast("Sentry N", Color3.fromRGB(255, 120, 120))
+	end
+end
+
+local function rechecksentries()
+	task.spawn(function()
+		while main.on and _G.aa == main do
+			task.wait(settings.sentryrescan)
+			pcall(function()
+				if main.sentrybox and main.sentrybox.Parent then
+					digsentries(main.sentrybox)
+				else
+					local buildings = workspace:FindFirstChild("Buildings")
+					if buildings then
+						local eventobjects = buildings:FindFirstChild("EventObjects")
+						if eventobjects then
+							local field = eventobjects:FindFirstChild("Sentries")
+							if field then
+								main.sentrybox = field
+								watchsentries(field)
+							end
+						end
+					end
+				end
+			end)
+		end
+	end)
+end
+
+local function keeploot(basepart)
+	if not basepart or not basepart:IsA("BasePart") then return end
+	if main.lootseen[basepart] then return end
+	main.lootseen[basepart] = true
+	table.insert(main.lootcache, basepart)
+end
+
+local function digloots(parent)
+	if not parent then return end
+	for _, child in ipairs(parent:GetChildren()) do
+		if child:IsA("Model") then
+			local base = child:FindFirstChild(settings.lootname)
+			if base and base:IsA("BasePart") then
+				keeploot(base)
+			end
+		end
+	end
+end
+
+local function watchloots(field)
+	if not field then return end
+	if main.lootdesc then
+		pcall(function() main.lootdesc:Disconnect() end)
+		main.lootdesc = nil
+	end
+	if main.lootchild then
+		pcall(function() main.lootchild:Disconnect() end)
+		main.lootchild = nil
+	end
+
+	digloots(field)
+
+	main.lootchild = field.ChildAdded:Connect(function(child)
+		if child:IsA("Model") then
+			local base = child:WaitForChild(settings.lootname, 2)
+			if base and base:IsA("BasePart") then
+				keeploot(base)
+			end
+		end
+	end)
+
+	main.lootdesc = field.DescendantAdded:Connect(function(d)
+		if d.Name == settings.lootname and d:IsA("BasePart") then
+			keeploot(d)
+		end
+	end)
+end
+
+local function findloots()
+	main.lootcache = {}
+	main.lootseen = {}
+
+	local found = false
+	pcall(function()
+		local buildings = workspace:FindFirstChild("Buildings")
+		if buildings then
+			local loots = buildings:FindFirstChild("Loots")
+			if loots then
+				loots = loots:FindFirstChild("Loots")
+				if loots then
+					local chars = loots:FindFirstChild("Characters")
+					if chars then
+						main.lootbox = chars
+						watchloots(chars)
+						found = true
+					end
+				end
+			end
+		end
+	end)
+
+	if #main.lootcache > 0 then
+		toast("Loot Y", Color3.fromRGB(190, 150, 240))
+	else
+		toast("Loot N", Color3.fromRGB(255, 120, 120))
+	end
+end
+
+local function wipeminetags()
+	for mine, hl in pairs(main.minetags) do
+		pcall(function() hl:Destroy() end)
+	end
+	main.minetags = {}
+end
+
+local function updateminetags(minesinfov)
+	local active = {}
+	for _, mine in ipairs(minesinfov) do
+		active[mine] = true
+		local hl = main.minetags[mine]
+		if not hl or not hl.Parent then
+			hl = Instance.new("Highlight")
+			hl.Adornee = mine
+			pcall(function()
+				hl.DepthMode = Enum.HighlightDepthMode.Occluded
+			end)
+			hl.FillColor = settings.minecolor
+			hl.OutlineColor = settings.minecolor
+			hl.FillTransparency = 0.7
+			hl.OutlineTransparency = 0.15
+			hl.Parent = main.screen
+			main.minetags[mine] = hl
+		end
+	end
+	local gone = {}
+	for mine, hl in pairs(main.minetags) do
+		if not active[mine] or not mine.Parent then
+			table.insert(gone, mine)
+		end
+	end
+	for _, mine in ipairs(gone) do
+		local hl = main.minetags[mine]
+		if hl then pcall(function() hl:Destroy() end) end
+		main.minetags[mine] = nil
+	end
+end
+
+local function wipesentrytags()
+	for s, hl in pairs(main.sentrytags) do
+		pcall(function() hl:Destroy() end)
+	end
+	main.sentrytags = {}
+end
+
+local function updatesentrytags(sentriesinfov)
+	local active = {}
+	for _, entry in ipairs(sentriesinfov) do
+		local model = entry.parent
+		if not model then continue end
+		active[model] = true
+
+		local hl = main.sentrytags[model]
+		if not hl or not hl.Parent then
+			hl = Instance.new("Highlight")
+			hl.Adornee = model
+			pcall(function()
+				hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			end)
+			hl.FillColor = settings.sentrycolor
+			hl.OutlineColor = settings.sentrycolor
+			hl.FillTransparency = 1
+			hl.OutlineTransparency = 0.15
+			hl.Parent = main.screen
+			main.sentrytags[model] = hl
+		end
+	end
+	local gone = {}
+	for model, hl in pairs(main.sentrytags) do
+		if not active[model] or not model.Parent then
+			table.insert(gone, model)
+		end
+	end
+	for _, model in ipairs(gone) do
+		local hl = main.sentrytags[model]
+		if hl then pcall(function() hl:Destroy() end) end
+		main.sentrytags[model] = nil
+	end
+end
+
+local function wipeloottags()
+	for part, hl in pairs(main.loottags) do
+		pcall(function() hl:Destroy() end)
+	end
+	main.loottags = {}
+end
+
+local function updateloottags(lootsinfov)
+	local active = {}
+	for _, base in ipairs(lootsinfov) do
+		active[base] = true
+		local hl = main.loottags[base]
+		if not hl or not hl.Parent then
+			hl = Instance.new("Highlight")
+			hl.Adornee = base
+			pcall(function()
+				hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			end)
+			hl.FillColor = settings.lootcolor
+			hl.OutlineColor = settings.lootcolor
+			hl.FillTransparency = 0.85
+			hl.OutlineTransparency = 0.4
+			hl.Parent = main.screen
+			main.loottags[base] = hl
+		end
+	end
+	local gone = {}
+	for base, hl in pairs(main.loottags) do
+		if not active[base] or not base.Parent then
+			table.insert(gone, base)
+		end
+	end
+	for _, base in ipairs(gone) do
+		local hl = main.loottags[base]
+		if hl then pcall(function() hl:Destroy() end) end
+		main.loottags[base] = nil
+	end
+end
+
+local function currenttool()
+	local char = player.Character
+	if not char then return nil end
+
+	local hum = char:FindFirstChildOfClass("Humanoid")
+	if hum then
+		local equipped = hum:FindFirstChildOfClass("Tool")
+		if equipped and equipped.Parent == char then return equipped end
+	end
+
+	for _, c in ipairs(char:GetChildren()) do
+		if c:IsA("Tool") then return c end
+	end
+
+	return nil
+end
+
+local function grabtool()
+	for i = 1, settings.tooltries do
+		local tool = currenttool()
+		if tool then return tool end
+		task.wait(settings.toolwait)
+	end
+	return nil
+end
+
+local function findhead(model)
+	if not model then return nil end
+	return model:FindFirstChild(settings.silentpart)
+		or model:FindFirstChild("Head")
+		or model:FindFirstChild("HeadCollider")
+end
+
+local function getowner(model)
+	if not model then return nil end
+	local p = Players:GetPlayerFromCharacter(model)
+	if p then return p end
+	local byname = Players:FindFirstChild(model.Name)
+	if byname and byname.Character == model then return byname end
+	return nil
+end
+
+local function isplayer(model)
+	return getowner(model) ~= nil
+end
+
+local function nearbybodies()
+	local char = player.Character
+	if not char then return {} end
+	local folder = char.Parent
+	if not folder or folder == workspace then return {} end
+	local list = {}
+	for _, child in ipairs(folder:GetChildren()) do
+		if child ~= char and child:IsA("Model") then
+			local hum = child:FindFirstChildOfClass("Humanoid")
+			if hum and hum.Health > 0 then
+				table.insert(list, child)
+			end
+		end
+	end
+	return list
+end
+
+local function aimpart(model)
+	local cursor = UserInputService:GetMouseLocation()
+	local best, bestdist = nil, math.huge
+	for _, name in ipairs(susparts) do
+		local part = model:FindFirstChild(name)
+		if part and part:IsA("BasePart") then
+			local sp = camera:WorldToViewportPoint(part.Position)
+			if sp.Z > 0 then
+				local d = (Vector2.new(sp.X, sp.Y) - cursor).Magnitude
+				if d < bestdist then
+					bestdist = d
+					best = part
+				end
+			end
+		end
+	end
+	if not best then
+		best = findhead(model)
+	end
+	return best
+end
+
+local function scanbodies()
+	local cursor = UserInputService:GetMouseLocation()
+	local mychar = player.Character
+	local mypos = mychar and mychar:GetPivot().Position
+	local list = {}
+	local playerinfov = false
+
+	for _, char in ipairs(nearbybodies()) do
+		local head = findhead(char)
+		if head then
+			local isp = isplayer(char)
+			local skip = false
+			if isp and settings.ignorefriends then
+				local owner = getowner(char)
+				if checkfriend(owner) then
+					skip = true
+				end
+			end
+			if not skip then
+				local sp = camera:WorldToViewportPoint(head.Position)
+				if sp.Z > 0 then
+					local d = (Vector2.new(sp.X, sp.Y) - cursor).Magnitude
+					if d <= settings.fov then
+						if isp then
+							playerinfov = true
+						end
+						local isclose = false
+						if mypos then
+							isclose = (head.Position - mypos).Magnitude <= settings.closerange
+						end
+						table.insert(list, {
+							char = char,
+							head = head,
+							dist = d,
+							isplayer = isp,
+							isclose = isclose,
+						})
+					end
+				end
+			end
+		end
+	end
+
+	table.sort(list, function(a, b)
+		if a.isclose ~= b.isclose then
+			return a.isclose
+		end
+		return a.dist < b.dist
+	end)
+
+	local limit = playerinfov and 1 or settings.maxtargets
+	if #list > limit then
+		for i = #list, limit + 1, -1 do
+			list[i] = nil
+		end
+	end
+
+	return list
+end
+
+local function scanmines()
+	local cursor = UserInputService:GetMouseLocation()
+	local list = {}
+	for _, mine in ipairs(main.minecache) do
+		if mine and mine.Parent then
+			local sp = camera:WorldToViewportPoint(mine.Position)
+			if sp.Z > 0 then
+				local d = (Vector2.new(sp.X, sp.Y) - cursor).Magnitude
+				if d <= settings.fov then
+					table.insert(list, {mine = mine, dist = d})
+				end
+			end
+		end
+	end
+	table.sort(list, function(a, b) return a.dist < b.dist end)
+	return list
+end
+
+local function scansentries()
+	local cursor = UserInputService:GetMouseLocation()
+	local list = {}
+	for _, s in ipairs(main.sentrycache) do
+		if s and s.Parent then
+			local sp = camera:WorldToViewportPoint(s.Position)
+			if sp.Z > 0 then
+				local d = (Vector2.new(sp.X, sp.Y) - cursor).Magnitude
+				if d <= settings.fov then
+					table.insert(list, {
+						sentry = s,
+						parent = s.Parent,
+						dist = d,
+					})
+				end
+			end
+		end
+	end
+	table.sort(list, function(a, b) return a.dist < b.dist end)
+	return list
+end
+
+local function scanloots()
+	local cursor = UserInputService:GetMouseLocation()
+	local list = {}
+	for _, base in ipairs(main.lootcache) do
+		if base and base.Parent then
+			local sp = camera:WorldToViewportPoint(base.Position)
+			if sp.Z > 0 then
+				local d = (Vector2.new(sp.X, sp.Y) - cursor).Magnitude
+				if d <= settings.fov then
+					table.insert(list, base)
+				end
+			end
+		end
+	end
+	return list
+end
+
+local function nextmine()
+	local list = scanmines()
+	if #list == 0 then return nil end
+
+	local stillthere = {}
+	for _, entry in ipairs(list) do
+		stillthere[entry.mine] = true
+	end
+
+	local clean = {}
+	for m, _ in pairs(main.minedone) do
+		if not stillthere[m] then
+			table.insert(clean, m)
+		end
+	end
+	for _, m in ipairs(clean) do
+		main.minedone[m] = nil
+	end
+
+	for _, entry in ipairs(list) do
+		if not main.minedone[entry.mine] then
+			return entry.mine
+		end
+	end
+
+	main.minedone = {}
+	return list[1].mine
+end
+
+local function nextsentry()
+	local list = scansentries()
+	if #list == 0 then return nil end
+
+	local stillthere = {}
+	for _, entry in ipairs(list) do
+		stillthere[entry.sentry] = true
+	end
+
+	local clean = {}
+	for m, _ in pairs(main.sentrydone) do
+		if not stillthere[m] then
+			table.insert(clean, m)
+		end
+	end
+	for _, m in ipairs(clean) do
+		main.sentrydone[m] = nil
+	end
+
+	for _, entry in ipairs(list) do
+		if not main.sentrydone[entry.sentry] then
+			return entry.sentry
+		end
+	end
+
+	main.sentrydone = {}
+	return list[1].sentry
+end
+
+local function throughwall(origin, targetpos, targetchar)
+	local dir = targetpos - origin
+	if dir.Magnitude < 0.001 then return true end
+
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = {player.Character, targetchar}
+
+	local result = workspace:Raycast(origin, dir, params)
+	if not result then return true end
+
+	local hitpart = result.Instance
+	if not hitpart or not hitpart:IsA("BasePart") then return false end
+
+	local size = hitpart.Size
+	local thickness = math.min(size.X, size.Y, size.Z)
+	return thickness <= settings.wallbangthickness
+end
+
+local function inrange(char)
+	local mychar = player.Character
+	if not mychar then return false end
+	local mypos = mychar:GetPivot().Position
+	local head = findhead(char)
+	local refpos = head and head.Position or char:GetPivot().Position
+	return (refpos - mypos).Magnitude <= settings.playermaxrange
+end
+
+local function wipebodytags()
+	for model, hl in pairs(main.bodytags) do
+		pcall(function() hl:Destroy() end)
+	end
+	main.bodytags = {}
+end
+
+local function updatebodytags(victims)
+	local active = {}
+	for _, t in ipairs(victims) do
+		local char = t.char
+		active[char] = true
+		local hl = main.bodytags[char]
+		if not hl or not hl.Parent then
+			hl = Instance.new("Highlight")
+			hl.Adornee = char
+			pcall(function()
+				hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			end)
+			if t.isplayer then
+				hl.FillColor = settings.playercolor
+				hl.OutlineColor = settings.playercolor
+				hl.FillTransparency = 1
+				hl.OutlineTransparency = 0.35
+			else
+				hl.FillColor = settings.npccolor
+				hl.OutlineColor = settings.npccolor
+				hl.FillTransparency = 1
+				hl.OutlineTransparency = 0.1
+			end
+			hl.Parent = main.screen
+			main.bodytags[char] = hl
+		end
+	end
+	local gone = {}
+	for model, hl in pairs(main.bodytags) do
+		if not active[model] or not model.Parent then
+			table.insert(gone, model)
+		end
+	end
+	for _, model in ipairs(gone) do
+		local hl = main.bodytags[model]
+		if hl then pcall(function() hl:Destroy() end) end
+		main.bodytags[model] = nil
+	end
+end
+
+local function thread(fn, ...)
+	local args = {...}
+	coroutine.wrap(function()
+		pcall(fn, table.unpack(args))
+	end)()
+end
+
+local function sendshot(remote, tool, origin, dir)
+	if not remote then return end
+	thread(function(r, t, o, d)
+		r:FireServer(t, o, d)
+	end, remote, tool, origin, dir)
+end
+
+local function sendhit(remote, targetchar, tool, part, partpos, normal, dir)
+	if not remote then return end
+	thread(function(r, tc, t, p, pp, n, d)
+		r:InvokeServer(tc, t, p, pp, {
+			Normal = n,
+			Instance = p,
+			Position = pp,
+		}, d)
+	end, remote, targetchar, tool, part, partpos, normal, dir)
+end
+
+local function sendmine(remote, tool, mine, minepos)
+	if not remote then return end
+	thread(function(r, t, m, mp)
+		r:InvokeServer(t, m, mp)
+	end, remote, tool, mine, minepos)
+end
+
+local function sendsentry(remote, tool, sentry, sentrypos)
+	if not remote then return end
+	thread(function(r, t, s, sp)
+		r:InvokeServer(t, s, sp)
+	end, remote, tool, sentry, sentrypos)
+end
+
+local function hitbody(t, tool, origin)
+	local char = t.char
+	if not char or not char.Parent then return end
+
+	if t.isplayer and settings.ignorefriends then
+		local owner = getowner(char)
+		if checkfriend(owner) then
+			return
+		end
+	end
+
+	if t.isplayer then
+		if tick() - main.lastplayerping < settings.playerhitinterval then
+			return
+		end
+		if not inrange(char) then
+			return
+		end
+	end
+
+	local toolnow = currenttool() or tool
+	if not toolnow or not toolnow.Parent then return end
+
+	local targetpart
+	if t.isplayer then
+		targetpart = aimpart(char)
+	else
+		targetpart = findhead(char)
+	end
+	if not targetpart or not targetpart.Parent then return end
+
+	local partpos = targetpart.Position
+
+	if t.isplayer then
+		local ok, can = pcall(throughwall, origin, partpos, char)
+		if ok and not can then
+			return
+		end
+	end
+
+	local dir = partpos - origin
+	if dir.Magnitude < 0.001 then
+		dir = Vector3.new(0, 0, -1)
+	else
+		dir = dir.Unit
+	end
+	local normal = -dir
+
+	if t.isplayer then
+		main.lastplayerping = tick()
+	end
+
+	sendshot(main.shootevt, toolnow, origin, dir)
+	sendhit(main.hitevt, char, toolnow, targetpart, partpos, normal, dir)
+end
+
+local function hitonemine(tool)
+	local mine = nextmine()
+	if not mine then return false end
+	main.minedone[mine] = true
+	sendmine(main.mineevt, tool, mine, mine.Position)
+	return true
+end
+
+local function hitonesentry(tool)
+	local s = nextsentry()
+	if not s then return false end
+	main.sentrydone[s] = true
+	sendsentry(main.sentryevt, tool, s, s.Position)
+	return true
+end
+
+local function goham(quiet)
+	if not main.on then return end
+	if not player.Character then return end
+
+	local tool = grabtool()
+	if not tool then
+		if not quiet then
+			toast("No tool", Color3.fromRGB(255, 120, 120))
+		end
+		return
+	end
+
+	local victims = scanbodies()
+	local origin = camera.CFrame.Position
+
+	for _, t in ipairs(victims) do
+		hitbody(t, tool, origin)
+	end
+
+	local minehit = hitonemine(tool)
+	local sentryhit = hitonesentry(tool)
+
+	if not quiet then
+		local label = (#victims == 1) and (victims[1].isplayer and "Player" or "NPC") or (#victims .. " NPCs")
+		if minehit then
+			label = label .. " + Mine"
+		end
+		if sentryhit then
+			label = label .. " + Sentry"
+		end
+
+		local full = string.format("%s | %s", label, tool.Name)
+		if full ~= main.lastsignature then
+			main.lastsignature = full
+			toast(full, Color3.fromRGB(120, 200, 255))
+		end
+	end
+end
+
+local function holdloop()
+	if main.holding then return end
+	main.holding = true
+	task.spawn(function()
+		local starttime = tick()
+		while main.pressing and main.on do
+			if tick() - starttime >= settings.holddelay then
+				pcall(goham, true)
+			end
+			task.wait(settings.holdinterval)
+		end
+		main.holding = false
+	end)
+end
+
+local pressconn = UserInputService.InputBegan:Connect(function(i, gp)
+	if gp then return end
+
+	if i.KeyCode == settings.togglekey and not main.switching then
+		main.switching = true
+		main.on = not main.on
+		if not main.on then
+			main.victims = {}
+			main.pressing = false
+			main.minedone = {}
+			main.sentrydone = {}
+			wipebodytags()
+			wipeminetags()
+			wipesentrytags()
+			wipeloottags()
+			if main.fovcircle then
+				main.fovcircle.Visible = false
+			end
+			toast("Silent OFF", Color3.fromRGB(255, 120, 120))
+		else
+			if main.fovcircle then
+				main.fovcircle.Visible = settings.showfov
+			end
+			toast("Silent ON", Color3.fromRGB(120, 255, 120))
+		end
+		return
+	end
+
+	if i.UserInputType == Enum.UserInputType.MouseButton1 then
+		if main.on then
+			main.pressing = true
+			pcall(goham, false)
+			holdloop()
+		end
+	end
+end)
+
+local releaseconn = UserInputService.InputEnded:Connect(function(i)
+	if i.KeyCode == settings.togglekey then
+		main.switching = false
+	end
+	if i.UserInputType == Enum.UserInputType.MouseButton1 then
+		main.pressing = false
+	end
+end)
+
+local frameconn = RunService.RenderStepped:Connect(function()
+	if not main.on then return end
+
+	if main.fovcircle then
+		local cursor = UserInputService:GetMouseLocation()
+		main.fovcircle.Position = UDim2.fromOffset(cursor.X, cursor.Y)
+	end
+
+	if not player.Character or not camera then return end
+
+	pcall(function()
+		local victims = scanbodies()
+		main.victims = victims
+		updatebodytags(victims)
+	end)
+
+	pcall(function()
+		local minesinfov = scanmines()
+		local parts = {}
+		for _, m in ipairs(minesinfov) do
+			table.insert(parts, m.mine)
+		end
+		updateminetags(parts)
+	end)
+
+	pcall(function()
+		local sentriesinfov = scansentries()
+		updatesentrytags(sentriesinfov)
+	end)
+
+	pcall(function()
+		local lootsinfov = scanloots()
+		updateloottags(lootsinfov)
+	end)
+end)
+
+main.cons = {pressconn, releaseconn, frameconn}
+
+_G.aa = main
+
+findmines()
+findsentries()
+findloots()
+getfriends()
+recheckmines()
+rechecksentries()
+
+toast("Silent | FOV " .. settings.fov .. " | K = toggle | hold click = spam", Color3.fromRGB(200, 200, 255))
