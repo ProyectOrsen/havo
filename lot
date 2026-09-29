@@ -23,6 +23,11 @@ if _G.aa then
 		if _G.aa.loottags then
 			for _, h in pairs(_G.aa.loottags) do pcall(function() h:Destroy() end) end
 		end
+		if _G.aa.lootlabels then
+			for _, e in pairs(_G.aa.lootlabels) do
+				if e.billboard then pcall(function() e.billboard:Destroy() end) end
+			end
+		end
 	end)
 	_G.aa = nil
 end
@@ -50,6 +55,7 @@ local settings = {
 	minecolor = Color3.fromRGB(255, 105, 180),
 	sentrycolor = Color3.fromRGB(255, 240, 150),
 	lootcolor = Color3.fromRGB(150, 100, 210),
+	cashcolor = Color3.fromRGB(110, 255, 110),
 	fovcolor = Color3.fromRGB(255, 50, 50),
 	showfov = true,
 	notifytime = 6,
@@ -68,6 +74,7 @@ local settings = {
 	ignorefriends = true,
 	minerescan = 5,
 	sentryrescan = 5,
+	cashrefresh = 0.2,
 }
 
 local susparts = {
@@ -101,6 +108,7 @@ local main = {
 	minetags = {},
 	sentrytags = {},
 	loottags = {},
+	lootlabels = {},
 	minecache = {},
 	mineseen = {},
 	minedone = {},
@@ -683,6 +691,15 @@ local function wipeloottags()
 	main.loottags = {}
 end
 
+local function wipelootlabels()
+	for base, entry in pairs(main.lootlabels) do
+		if entry.billboard then
+			pcall(function() entry.billboard:Destroy() end)
+		end
+	end
+	main.lootlabels = {}
+end
+
 local function updateloottags(lootsinfov)
 	local active = {}
 	for _, base in ipairs(lootsinfov) do
@@ -712,6 +729,113 @@ local function updateloottags(lootsinfov)
 		local hl = main.loottags[base]
 		if hl then pcall(function() hl:Destroy() end) end
 		main.loottags[base] = nil
+	end
+end
+
+local function formatcash(n)
+	if n >= 1000000000 then
+		return string.format("%.1fB", n / 1000000000)
+	elseif n >= 1000000 then
+		return string.format("%.1fM", n / 1000000)
+	elseif n >= 1000 then
+		return string.format("%.1fK", n / 1000)
+	end
+	return tostring(math.floor(n))
+end
+
+local function getcash(base)
+	if not base or not base.Parent then return 0 end
+	local gridval = base:FindFirstChild("gridStorage")
+	if not gridval then return 0 end
+	local gridid = gridval.Value
+	if not gridid or gridid == "" then return 0 end
+
+	local storage = ReplicatedStorage:FindFirstChild("Storage")
+	if not storage then return 0 end
+	local gridstore = storage:FindFirstChild("GridItemStorage")
+	if not gridstore then return 0 end
+	local grid = gridstore:FindFirstChild(gridid)
+	if not grid then return 0 end
+	local items = grid:FindFirstChild("items")
+	if not items then return 0 end
+
+	local total = 0
+	for _, child in ipairs(items:GetChildren()) do
+		if child.Name == "Cash" then
+			local data = child:FindFirstChild("data")
+			if data then
+				local amount = data:FindFirstChild("amount")
+				if amount and typeof(amount.Value) == "number" then
+					total = total + amount.Value
+				end
+			end
+		end
+	end
+	return total
+end
+
+local function updatelootlabels(lootsinfov)
+	local active = {}
+	local now = tick()
+
+	for _, base in ipairs(lootsinfov) do
+		if base and base.Parent then
+			active[base] = true
+
+			local entry = main.lootlabels[base]
+			if not entry or not entry.billboard or not entry.billboard.Parent then
+				local billboard = Instance.new("BillboardGui")
+				billboard.Name = "CashTag"
+				billboard.Size = UDim2.new(0, 90, 0, 18)
+				billboard.StudsOffset = Vector3.new(0, 2.2, 0)
+				billboard.AlwaysOnTop = true
+				billboard.LightInfluence = 0
+				billboard.MaxDistance = 500
+				billboard.Adornee = base
+
+				local label = Instance.new("TextLabel")
+				label.BackgroundTransparency = 1
+				label.Size = UDim2.new(1, 0, 1, 0)
+				label.Text = ""
+				label.TextColor3 = settings.cashcolor
+				label.TextStrokeTransparency = 0.35
+				label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+				label.TextSize = 14
+				label.Font = Enum.Font.GothamBold
+				label.TextXAlignment = Enum.TextXAlignment.Center
+				label.Parent = billboard
+
+				billboard.Parent = main.screen
+				entry = {billboard = billboard, label = label, lasttext = "", lastcheck = 0, cached = 0}
+				main.lootlabels[base] = entry
+			end
+
+			if now - entry.lastcheck >= settings.cashrefresh then
+				entry.lastcheck = now
+				entry.cached = getcash(base)
+				local text = "$" .. formatcash(entry.cached)
+				if text ~= entry.lasttext then
+					entry.lasttext = text
+					entry.label.Text = text
+				end
+				entry.label.TextTransparency = entry.cached > 0 and 0 or 1
+				entry.label.TextStrokeTransparency = entry.cached > 0 and 0.35 or 1
+			end
+		end
+	end
+
+	local gone = {}
+	for base, entry in pairs(main.lootlabels) do
+		if not active[base] or not base.Parent then
+			table.insert(gone, base)
+		end
+	end
+	for _, base in ipairs(gone) do
+		local entry = main.lootlabels[base]
+		if entry and entry.billboard then
+			pcall(function() entry.billboard:Destroy() end)
+		end
+		main.lootlabels[base] = nil
 	end
 end
 
@@ -824,27 +948,29 @@ local function scanbodies()
 				if sp.Z > 0 then
 					local d = (Vector2.new(sp.X, sp.Y) - cursor).Magnitude
 					if d <= settings.fov then
-						local worldDist = 0
+						local worldDist = math.huge
 						if mypos then
 							worldDist = (head.Position - mypos).Magnitude
 						end
-						if isp and worldDist <= settings.playermaxrange then
-							if d < bestPlayerDist then
-								bestPlayerDist = d
-								bestPlayer = {
-									char = char,
-									head = head,
-									dist = d,
-									isplayer = true,
-									isclose = true,
-								}
+						if isp then
+							if worldDist <= settings.playermaxrange then
+								if d < bestPlayerDist then
+									bestPlayerDist = d
+									bestPlayer = {
+										char = char,
+										head = head,
+										dist = d,
+										isplayer = true,
+										isclose = true,
+									}
+								end
 							end
 						else
 							table.insert(list, {
 								char = char,
 								head = head,
 								dist = d,
-								isplayer = isp,
+								isplayer = false,
 								isclose = mypos and worldDist <= settings.closerange or false,
 							})
 						end
@@ -1115,13 +1241,13 @@ local function hitbody(t, tool, origin, bypassCooldown)
 	end
 
 	if t.isplayer then
+		if not inrange(char) then
+			return
+		end
 		if not bypassCooldown then
 			if tick() - main.lastplayerping < settings.playerhitinterval then
 				return
 			end
-		end
-		if not inrange(char) then
-			return
 		end
 	end
 
@@ -1262,6 +1388,7 @@ local pressconn = UserInputService.InputBegan:Connect(function(i, gp)
 			wipeminetags()
 			wipesentrytags()
 			wipeloottags()
+			wipelootlabels()
 			if main.fovcircle then
 				main.fovcircle.Visible = false
 			end
@@ -1326,6 +1453,7 @@ local frameconn = RunService.RenderStepped:Connect(function()
 	pcall(function()
 		local lootsinfov = scanloots()
 		updateloottags(lootsinfov)
+		updatelootlabels(lootsinfov)
 	end)
 end)
 
@@ -1338,6 +1466,6 @@ findsentries()
 findloots()
 getfriends()
 recheckmines()
-rechecksentries()
+rechecksentryes()
 
-toast("Silent + Mines + Sentries + Loot | FOV " .. settings.fov .. " | K = toggle | hold click = spam", Color3.fromRGB(200, 200, 255))
+toast("Silent + Mines + Sentries + Loot + Cash | FOV " .. settings.fov .. " | K = toggle | hold click = spam", Color3.fromRGB(200, 200, 255))
