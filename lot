@@ -65,7 +65,7 @@ local settings = {
 	holddelay = 0.3,
 	holdinterval = 0.05,
 	playerhitinterval = 0.4,
-	playermaxrange = 700,
+	playermaxrange = 1000,
 	minename = "rayHitbox",
 	sentryname = "rayHitbox",
 	lootname = "Base",
@@ -1466,6 +1466,6 @@ findsentries()
 findloots()
 getfriends()
 recheckmines()
-rechecksentryes()
+rechecksentries()
 
 toast("Silent + Mines + Sentries + Loot + Cash | FOV " .. settings.fov .. " | K = toggle | hold click = spam", Color3.fromRGB(200, 200, 255))
