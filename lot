@@ -59,7 +59,7 @@ local settings = {
 	fovcolor = Color3.fromRGB(255, 50, 50),
 	showfov = true,
 	notifytime = 6,
-	maxtargets = 12,
+	maxtargets = 100,
 	tooltries = 3,
 	toolwait = 0.05,
 	holddelay = 0.3,
@@ -924,10 +924,36 @@ local function aimpart(model)
 	return best
 end
 
+local function canhitplayer(char, origin)
+	local head = findhead(char)
+	if not head then return false end
+	local mychar = player.Character
+	if not mychar then return false end
+	local mypos = mychar:GetPivot().Position
+	if (head.Position - mypos).Magnitude > settings.playermaxrange then
+		return false
+	end
+	local ok, can = pcall(function()
+		local dir = head.Position - origin
+		if dir.Magnitude < 0.001 then return true end
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = {player.Character, char}
+		local result = workspace:Raycast(origin, dir, params)
+		if not result then return true end
+		local hitpart = result.Instance
+		if not hitpart or not hitpart:IsA("BasePart") then return false end
+		local size = hitpart.Size
+		local thickness = math.min(size.X, size.Y, size.Z)
+		return thickness <= settings.wallbangthickness
+	end)
+	if not ok then return false end
+	return can
+end
+
 local function scanbodies()
 	local cursor = UserInputService:GetMouseLocation()
-	local mychar = player.Character
-	local mypos = mychar and mychar:GetPivot().Position
+	local origin = camera.CFrame.Position
 	local list = {}
 	local bestPlayer = nil
 	local bestPlayerDist = math.huge
@@ -948,12 +974,8 @@ local function scanbodies()
 				if sp.Z > 0 then
 					local d = (Vector2.new(sp.X, sp.Y) - cursor).Magnitude
 					if d <= settings.fov then
-						local worldDist = math.huge
-						if mypos then
-							worldDist = (head.Position - mypos).Magnitude
-						end
 						if isp then
-							if worldDist <= settings.playermaxrange then
+							if canhitplayer(char, origin) then
 								if d < bestPlayerDist then
 									bestPlayerDist = d
 									bestPlayer = {
@@ -961,7 +983,6 @@ local function scanbodies()
 										head = head,
 										dist = d,
 										isplayer = true,
-										isclose = true,
 									}
 								end
 							end
@@ -971,7 +992,6 @@ local function scanbodies()
 								head = head,
 								dist = d,
 								isplayer = false,
-								isclose = mypos and worldDist <= settings.closerange or false,
 							})
 						end
 					end
@@ -985,9 +1005,6 @@ local function scanbodies()
 	end
 
 	table.sort(list, function(a, b)
-		if a.isclose ~= b.isclose then
-			return a.isclose
-		end
 		return a.dist < b.dist
 	end)
 
@@ -1241,9 +1258,6 @@ local function hitbody(t, tool, origin, bypassCooldown)
 	end
 
 	if t.isplayer then
-		if not inrange(char) then
-			return
-		end
 		if not bypassCooldown then
 			if tick() - main.lastplayerping < settings.playerhitinterval then
 				return
